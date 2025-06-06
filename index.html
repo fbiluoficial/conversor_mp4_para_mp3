@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor de Vídeo para MP3</title>
+    <style>
+        /* Estilos gerais para uma aparência limpa */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            color: #1c1e21;
+            margin-bottom: 10px;
+        }
+
+        p {
+            color: #606770;
+            margin-bottom: 25px;
+        }
+
+        /* Estilo para o input de arquivo */
+        #uploader {
+            display: none; /* Esconde o input original */
+        }
+
+        .upload-label {
+            display: inline-block;
+            padding: 12px 20px;
+            background-color: #e4e6eb;
+            color: #1c1e21;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        .upload-label:hover {
+            background-color: #d8dbdf;
+        }
+        
+        #fileName {
+            margin-top: 15px;
+            font-style: italic;
+            color: #606770;
+        }
+
+        /* Estilo dos botões */
+        .button {
+            display: inline-block;
+            width: 100%;
+            padding: 14px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+            background-color: #1877f2;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 20px;
+            text-decoration: none; /* Para o link de download */
+            box-sizing: border-box;
+            transition: background-color 0.2s;
+        }
+
+        .button:hover {
+            background-color: #166fe5;
+        }
+
+        .button:disabled {
+            background-color: #9cbce0;
+            cursor: not-allowed;
+        }
+        
+        #downloadLink {
+            display: none; /* Começa escondido */
+            background-color: #42b72a;
+        }
+
+        #downloadLink:hover {
+            background-color: #36a420;
+        }
+
+        /* Estilo das barras de progresso */
+        .progress-container {
+            margin-top: 20px;
+        }
+        
+        .progress-label {
+            text-align: left;
+            font-size: 14px;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .progress-bar {
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 6px;
+            height: 20px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .progress-bar-inner {
+            height: 100%;
+            width: 0%;
+            background-color: #1877f2;
+            border-radius: 6px;
+            transition: width 0.4s ease;
+            text-align: center;
+            color: white;
+            line-height: 20px;
+            font-size: 12px;
+        }
+
+        /* Esconder elementos de progresso inicialmente */
+        #progressSection {
+            display: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Conversor de Vídeo para MP3</h1>
+        <p>Selecione um arquivo de vídeo do seu computador. A conversão é feita localmente no seu navegador, nada é enviado para um servidor.</p>
+
+        <!-- Input de arquivo estilizado com label -->
+        <label for="uploader" class="upload-label">Escolher Vídeo</label>
+        <input type="file" id="uploader" accept="video/*">
+        <div id="fileName">Nenhum arquivo selecionado</div>
+
+        <!-- Botão de Converter -->
+        <button id="convertBtn" class="button" disabled>Converter para MP3</button>
+
+        <!-- Seção de Progresso (inicialmente oculta) -->
+        <div id="progressSection">
+            <!-- Barra de Progresso do "Upload" (leitura do arquivo) -->
+            <div class="progress-container">
+                <div class="progress-label">1. Lendo arquivo...</div>
+                <div class="progress-bar">
+                    <div id="uploadProgress" class="progress-bar-inner">0%</div>
+                </div>
+            </div>
+            <!-- Barra de Progresso da Conversão -->
+            <div class="progress-container">
+                <div class="progress-label">2. Convertendo...</div>
+                <div class="progress-bar">
+                    <div id="conversionProgress" class="progress-bar-inner">0%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botão/Link de Download (inicialmente oculto) -->
+        <a id="downloadLink" href="#" class="button" download>Baixar MP3</a>
+        
+        <p id="status" style="margin-top: 20px;"></p>
+    </div>
+
+    <!-- Scripts necessários para o FFmpeg.wasm -->
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+
+    <script>
+        // Seleciona os elementos do DOM
+        const uploader = document.getElementById('uploader');
+        const fileNameDisplay = document.getElementById('fileName');
+        const convertBtn = document.getElementById('convertBtn');
+        const downloadLink = document.getElementById('downloadLink');
+        const status = document.getElementById('status');
+        const progressSection = document.getElementById('progressSection');
+        const uploadProgress = document.getElementById('uploadProgress');
+        const conversionProgress = document.getElementById('conversionProgress');
+
+        let videoFile = null;
+
+        // Desestrutura as funções necessárias da biblioteca FFmpeg
+        const { createFFmpeg, fetchFile } = FFmpeg;
+        
+        // Cria uma instância do FFmpeg com log e progresso ativados
+        const ffmpeg = createFFmpeg({
+            log: true, // Mostra o log do FFmpeg no console do navegador (bom para depuração)
+            progress: ({ ratio }) => {
+                // Atualiza a barra de progresso da conversão
+                const progress = Math.round(ratio * 100);
+                conversionProgress.style.width = `${progress}%`;
+                conversionProgress.textContent = `${progress}%`;
+            },
+        });
+
+        // Função para carregar o FFmpeg (só precisa ser feito uma vez)
+        const loadFFmpeg = async () => {
+            status.textContent = 'Carregando componentes... (pode levar alguns segundos na primeira vez)';
+            await ffmpeg.load();
+            status.textContent = 'Pronto para converter! Escolha um vídeo.';
+        };
+        
+        // Carrega o ffmpeg assim que a página é aberta
+        loadFFmpeg();
+
+        // Evento quando um arquivo é selecionado
+        uploader.addEventListener('change', (e) => {
+            videoFile = e.target.files[0];
+            if (videoFile) {
+                fileNameDisplay.textContent = videoFile.name;
+                convertBtn.disabled = false; // Habilita o botão de converter
+                resetUI(); // Reseta a UI para uma nova conversão
+            }
+        });
+
+        // Evento quando o botão de converter é clicado
+        convertBtn.addEventListener('click', async () => {
+            if (!videoFile) return;
+
+            // Prepara a UI para a conversão
+            convertBtn.disabled = true;
+            progressSection.style.display = 'block';
+            status.textContent = 'Iniciando conversão...';
+
+            // 1. Simula o progresso de "upload" (leitura do arquivo para a memória do FFmpeg)
+            uploadProgress.style.width = '100%';
+            uploadProgress.textContent = '100%';
+            
+            try {
+                // Escreve o arquivo no sistema de arquivos virtual do FFmpeg
+                status.textContent = 'Preparando arquivo para conversão...';
+                ffmpeg.FS('writeFile', videoFile.name, await fetchFile(videoFile));
+
+                // Executa o comando do FFmpeg
+                // -i [nome do arquivo de entrada] [nome do arquivo de saída]
+                status.textContent = 'Convertendo... Isso pode demorar dependendo do tamanho do vídeo e da potência do seu PC.';
+                await ffmpeg.run('-i', videoFile.name, 'output.mp3');
+
+                // Lê o arquivo MP3 resultante
+                const data = ffmpeg.FS('readFile', 'output.mp3');
+
+                // Cria um link de download para o arquivo
+                const blob = new Blob([data.buffer], { type: 'audio/mpeg' });
+                const url = URL.createObjectURL(blob);
+
+                // Configura e exibe o link de download
+                downloadLink.href = url;
+                // Gera um nome de arquivo de saída, ex: "meu_video.mp4" -> "meu_video.mp3"
+                downloadLink.download = videoFile.name.replace(/\.[^/.]+$/, "") + '.mp3';
+                downloadLink.style.display = 'block';
+                
+                status.textContent = 'Conversão concluída com sucesso!';
+                progressSection.style.display = 'none'; // Esconde o progresso ao finalizar
+
+            } catch (error) {
+                console.error(error);
+                status.textContent = `Ocorreu um erro: ${error.message}`;
+                resetUI();
+                convertBtn.disabled = false;
+            }
+        });
+        
+        // Função para resetar a interface
+        function resetUI() {
+            downloadLink.style.display = 'none';
+            progressSection.style.display = 'none';
+            uploadProgress.style.width = '0%';
+            uploadProgress.textContent = '0%';
+            conversionProgress.style.width = '0%';
+            conversionProgress.textContent = '0%';
+            status.textContent = '';
+        }
+
+    </script>
+</body>
+</html>
